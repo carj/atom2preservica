@@ -324,20 +324,24 @@ def init(args):
 
     security_tag: str = cmd_line['security_tag']
 
-    collection = cmd_line['collection']
+    collection = cmd_line['search_collection']
     if collection is not None:
         folder: Folder = entity.folder(collection)
         logger.info(f"Synchronise metadata for objects in collection: {folder.title}")
     else:
         logger.info(f"Synchronise metadata for objects from all collections")
 
-    new_collections = cmd_line["add_new_collections"]
+    new_collections = cmd_line["new_collections_root"]
     new_folder_location = None
     if new_collections is not None:
         new_folder_location: Folder = entity.folder(new_collections)
         logger.info(f"New Collections will be added below: {new_folder_location.title}")
     else:
         logger.info(f"New Collections will be added at the Preservica root")
+
+    atom_server: str = cmd_line["atom_server"]
+    if atom_server.startswith("https://"):
+        atom_server = atom_server.replace("https://", "")
 
     atom_client: AccessToMemory = None
     if cmd_line["atom_api_key"] is not None:
@@ -359,7 +363,7 @@ def main():
 
       """
     cmd_parser = argparse.ArgumentParser(
-        prog='AtoM2Preservica',
+        prog='atom2preservica',
         description='Synchronise metadata and levels of description from a Access To Memory (AtoM) instance to Preservica',
         epilog='')
 
@@ -374,11 +378,11 @@ def main():
                             help="The Preservica security tag to use for new collections, defaults to open",
                             required=False)
 
-    cmd_parser.add_argument("-c", "--collection", type=str,
+    cmd_parser.add_argument("-c", "--search-collection", type=str,
                             help="The Preservica parent collection uuid to search for linked assets, ignore to Synchronise the entire repository",
                             required=False)
 
-    cmd_parser.add_argument("-ac", "--add-new-collections", type=str,
+    cmd_parser.add_argument("-cr", "--new-collections-root", type=str,
                             help="The parent Preservica collection to add new AtoM levels of description, ignore to add new collections at the root",
                             required=False)
 

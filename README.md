@@ -37,6 +37,8 @@ but AtoM does not hold a link back to Preservica. The synchronisation is not yet
 
 If descriptive metadata is updated in AtoM, the module will not update the asset metadata in Preservica.
 
+The AtoM Rest Plugin arRestApiPlugin needs to be activated for atom2preservica to work.
+
 ## Support 
 
 atom2preservica is 3rd party open source library and is not affiliated or supported by Preservica Ltd or Artefactual.
@@ -58,5 +60,41 @@ To install atom2preservica, simply run this simple command in your terminal of c
     $ pip install atom2preservica
 
 
+
 ## Usage
 
+    usage: atom2preservica [-h] -a ATOM_SERVER [-k ATOM_API_KEY] [-au ATOM_USER]
+                       [-ap ATOM_PASSWORD] [-st SECURITY_TAG] [-c COLLECTION]
+                       [-cr NEW_COLLECTIONS_ROOT]  [-u PRESERVICA_USERNAME]
+                       [-p PRESERVICA_PASSWORD] [-s PRESERVICA_SERVER]
+
+    mandatory arguments:
+
+         -a [--atom-server]     The URL of the AtoM server
+
+    optional arguments:
+
+            -k [--atom-api-key]             The API key for the AtoM user
+            -au [--atom-user]               The username for the AtoM user
+            -ap [--atom-password]           The password for the AtoM user
+
+            -st [--security-tag]            The security tag for any new collections added to Preservica
+            -c [--search-collection]        The Preservica collection to search for assets, ignore to search the entire repository
+
+            -cr [--new-collections-root]    Add location where new AtoM Fonds/series should be created in Preservica. 
+                                            If not set, new collections will be created at the root of the repository
+
+            -u [--preservica-username]      Your Preservica username if not using credentials.properties
+                                
+            -p [--preservica-password]      Your Preservica password if not using credentials.properties
+                             
+            -s [--preservica-server]        Your Preservica server domain name if not using credentials.properties
+     
+
+
+## Example
+
+For example to synchronise assets from the AtoM demo server searching across the entire Preservica repository for 
+linked assets:
+
+    $ python -m atom2preservica --atom-server demo.accesstomemory.org --atom-api-key ae049f6e0924d477                       
