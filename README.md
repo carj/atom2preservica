@@ -25,9 +25,13 @@ It moves the Preservica asset into the correct level of the newly created hierar
 ## Select Assets for Synchronisation
 
 atom2preservica searches a Preservica collection or the entire Preservica repository for assets which have been marked as ready
-for synchronisation. The mechanism used is that objects should have an external identifier containing the AtoM slug.
+for synchronisation. The mechanism used to determine that an asset is reasy for linking is that objects should have an 
+external identifier containing the AtoM slug.
 The key for the identifier should be "AToM-Slug". The value should be the slug of the AtoM object.
 
+For example:
+
+![AToM-Slug](C:\Users\carj\PycharmProjects\atom2preservica\docs\images\slug.png)
 
 ## Limitations
 
