@@ -31,7 +31,7 @@ The key for the identifier should be "AToM-Slug". The value should be the slug o
 
 For example:
 
-![AToM-Slug](C:\Users\carj\PycharmProjects\atom2preservica\docs\images\slug.png)
+![AToM-Slug](/docs/images/slug.png)
 
 ## Limitations
 
