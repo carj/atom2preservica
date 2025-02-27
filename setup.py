@@ -41,7 +41,7 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: System :: Archiving",
     ],
-    keywords='Preservica API Preservation',
+    keywords='Preservica API Preservation, AccessToMemory, AtoM',
     install_requires=["pyPreservica", "pyAtoM"],
     project_urls={
         'Documentation': 'https://github.com/carj/atom2preservica',
