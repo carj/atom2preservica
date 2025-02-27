@@ -19,14 +19,14 @@ logging.basicConfig(level=logging.INFO)
 
 ATOM_SLUG = "AToM-Slug"
 ATOM_SYNC_DATE = "AToM-Sync-Date"
+ATOM_REFERENCE_CODE = "AToM-Reference-Code"
 
+# keep a cache of folders to avoid multiple lookups to Preservica
 folder_cache = dict()
-
-
 
 def create_folder(entity: EntityAPI, atom_item, parent_ref, security_tag: str):
     """
-    Create a new folder in Preservica from an AtoM item
+    Create a new folder in Preservica from an AtoM json record
 
     :param entity:
     :param atom_item:
@@ -35,27 +35,43 @@ def create_folder(entity: EntityAPI, atom_item, parent_ref, security_tag: str):
     :return:
     """
 
-    title = None
-    reference_code = None
-    if 'reference_code' in atom_item:
-        reference_code = atom_item['reference_code']
-        title = reference_code
-
     slug = atom_item['slug']
 
-    description = atom_item['title'].replace('\xa0', ' ').replace("&", "&amp;")
+    # If the title does not exist, use the reference code
+    if 'title' in atom_item:
+        title = atom_item['title'].replace('\xa0', ' ').replace("&", "&amp;")
+    else:
+        if 'reference_code' in atom_item:
+            title = atom_item['reference_code']
+        else:
+            title = ""
+
+    if 'scope_and_content' in atom_item:
+        description = atom_item['scope_and_content'].replace('\xa0', ' ').replace("&", "&amp;")
+    else:
+        if 'title' in atom_item:
+            description = atom_item['title'].replace('\xa0', ' ').replace("&", "&amp;")
+        else:
+            description = ""
+
 
     print(f"Creating folder: {title, description, parent_ref}")
 
     folder = entity.create_folder(title=title, description=description, security_tag=security_tag, parent=parent_ref)
 
+    # Add the identifiers to the folder
     entity.add_identifier(folder, ATOM_SLUG, slug)
     entity.add_identifier(folder, ATOM_SYNC_DATE, datetime.now().isoformat())
-    if reference_code:
-        entity.add_identifier(folder, "Reference code", reference_code)
+    if 'reference_code' in atom_item:
+        entity.add_identifier(folder, identifier_type=ATOM_REFERENCE_CODE, identifier_value=atom_item['reference_code'])
 
     add_asset_metadata(entity, folder, atom_item)
 
+    if 'level_of_description' in atom_item:
+        folder.custom_type = atom_item['level_of_description']
+        folder = entity.save(folder)
+
+    # add the new folder to the cache
     folder_cache[slug] = folder
 
     logger.info(f"Created New Folder: {folder.title}")
@@ -99,13 +115,13 @@ def create_parent_series(atom_client: AccessToMemory, entity: EntityAPI, slug: s
         return create_parent_series(atom_client, entity, parent_item_slug, security_tag)
 
 
-def get_levels(atom_client: AccessToMemory, atom_record, levels):
+def get_levels(atom_client: AccessToMemory, atom_record: dict, levels: list):
     """
-    Get a list of levels of description from the parent of the AtoM record
+    Get a list of levels of description above the atom record
 
     :param atom_client:
-    :param atom_record:
-    :param levels:
+    :param atom_record:     The AtoM record
+    :param levels:          The list of levels of description
     :return:
     """
     if 'parent' in atom_record:
@@ -119,33 +135,29 @@ def get_levels(atom_client: AccessToMemory, atom_record, levels):
         return
 
 
-def does_folder_exist(entity: EntityAPI, slug: str):
+def does_folder_exist(client: EntityAPI, slug: str):
     """
     Check if a parent collection already exists in Preservica
 
-    :param entity:
-    :param slug:
-    :return:
+    Folders just need an ATOM slug.
+
+    :param client:      The Preservica client
+    :param slug:        The AtoM slug
+    :return: Folder
     """
 
     # Check the cache first
     if slug in folder_cache:
         return folder_cache[slug]
 
-    entities = entity.identifier(ATOM_SLUG, slug)
-    if len(entities) > 1:
+    entities = client.identifier(ATOM_SLUG, slug)
+    if len(entities) > 0:
         for e in entities:
-            folder = entity.entity(e.entity_type, e.reference)
-            if folder.entity_type == EntityType.FOLDER:
-                folder_cache[slug] = folder
-                return folder_cache[slug]
-    if len(entities) == 1:
-        folder = entities.pop()
-        if folder.entity_type == EntityType.FOLDER:
-            folder_cache[slug] = folder
-            return folder_cache[slug]
-        else:
-            return None
+            if e.entity_type == EntityType.FOLDER:
+                folder = client.entity(e.entity_type, e.reference)
+                if folder.entity_type == EntityType.FOLDER:
+                    folder_cache[slug] = folder
+                    return folder_cache[slug]
     else:
         return None
 
@@ -201,11 +213,16 @@ def add_asset_metadata(client: EntityAPI, entity: Entity, atom_record: dict):
 
     if 'creators' in atom_record:
         for creator in atom_record['creators']:
-            xml.etree.ElementTree.SubElement(xip_object, "dc:creator").text = creator['authorized_form_of_name']
+            if 'authorized_form_of_name' in creator:
+                xml.etree.ElementTree.SubElement(xip_object, "dc:creator").text = creator['authorized_form_of_name']
 
     if 'dates' in atom_record:
         for date in atom_record['dates']:
-            xml.etree.ElementTree.SubElement(xip_object, "dc:date").text = date['date']
+            if 'date' in date:
+                xml.etree.ElementTree.SubElement(xip_object, "dc:date").text = date['date']
+            else:
+                if ('start_date' in date) and ('end_date' in date):
+                    xml.etree.ElementTree.SubElement(xip_object, "dc:date").text = f"{date['start_date']} - {date['end_date']}"
 
     if 'scope_and_content' in atom_record:
         xml.etree.ElementTree.SubElement(xip_object, "dc:description").text = atom_record['scope_and_content']
@@ -217,6 +234,12 @@ def add_asset_metadata(client: EntityAPI, entity: Entity, atom_record: dict):
 
     if 'reference_code' in atom_record:
         xml.etree.ElementTree.SubElement(xip_object, "dc:identifier").text = atom_record['reference_code']
+
+    if 'alternative_identifiers' in atom_record:
+        for identifier in atom_record['alternative_identifiers']:
+            if isinstance(identifier, dict):
+                for key, value in identifier.items():
+                    xml.etree.ElementTree.SubElement(xip_object, "dc:identifier").text = f"{key} : {value}"
 
     if 'languages_of_material' in atom_record:
         for lang in atom_record['languages_of_material']:
@@ -248,6 +271,42 @@ def add_asset_metadata(client: EntityAPI, entity: Entity, atom_record: dict):
 
     client.add_metadata(entity, "http://www.openarchives.org/OAI/2.0/oai_dc/", xml_request.decode('utf-8'))
 
+
+def save_asset(entity: EntityAPI, asset: Asset, atom_record: dict,  parent_folder: Folder):
+    """
+    Save the asset to Preservica
+
+    :param parent_folder:
+    :param atom_record:
+    :param asset:
+    :param entity:
+    :return:
+    """
+
+    # Update the Asset with the new Title and Description from ATOM
+    if 'title' in atom_record:
+        asset.title = atom_record['title']
+    if 'scope_and_content' in atom_record:
+        asset.description = atom_record['scope_and_content']
+    if 'level_of_description' in atom_record:
+        level_of_description = atom_record['level_of_description']
+        asset.custom_type = level_of_description
+
+    entity.save(asset)
+    entity.add_identifier(asset, ATOM_SYNC_DATE, datetime.now().isoformat())
+
+    if 'reference_code' in atom_record:
+        entity.add_identifier(asset, ATOM_REFERENCE_CODE, atom_record['reference_code'])
+
+    if 'alternative_identifiers' in atom_record:
+        for identifier in atom_record['alternative_identifiers']:
+            if isinstance(identifier, dict):
+                for key, value in identifier.items():
+                    entity.add_identifier(asset, key, value)
+
+    add_asset_metadata(entity, asset, atom_record)
+    entity.move(asset, parent_folder)
+
 def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_client: AccessToMemory, parent_collection: Folder, security_tag: str):
     """
     Synchronise metadata from items in ATOM onto Preservica Assets
@@ -269,7 +328,11 @@ def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_clie
 
     num_hits: int = search.search_index_filter_hits(query="%", filter_values=filter_values)
 
-    logger.info(f"Found {num_hits} objects to check")
+    if num_hits == 0:
+        logger.info(f"No objects found to synchronise")
+        return
+    else:
+        logger.info(f"Found {num_hits} objects to check")
 
 
     for hit in search.search_index_filter_list(query="%", filter_values=filter_values):
@@ -286,16 +349,10 @@ def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_clie
             if sync_date is None:
                 atom_record = atom_client.get(slug=atom_slug)
                 if atom_record is not None:
-                    parent_folder = get_folder(entity, atom_record, atom_client, security_tag, parent_collection)
+                    parent_folder: Folder = get_folder(entity, atom_record, atom_client, security_tag, parent_collection)
                     logger.info(f"Found AtoM slug: {atom_slug} for asset: {reference}")
-                    if 'title' in atom_record:
-                        asset.title = atom_record['title']
-                    if 'scope_and_content' in atom_record:
-                        asset.description = atom_record['scope_and_content']
-                    entity.save(asset)
-                    entity.add_identifier(asset, ATOM_SYNC_DATE, datetime.now().isoformat())
-                    add_asset_metadata(entity, asset, atom_record)
-                    entity.move(asset, parent_folder)
+                    # Update the Asset with ATOM metadata and move it to the correct collection
+                    save_asset(entity, asset, atom_record, parent_folder)
             else:
                 logger.info(f"Asset: {asset.title} already synchronised on {sync_date}")
 
@@ -340,7 +397,7 @@ def init(args):
         new_folder_location: Folder = entity.folder(new_collections)
         logger.info(f"New Collections will be added below: {new_folder_location.title}")
     else:
-        logger.info(f"New Collections will be added at the Preservica root")
+        logger.info(f"New Collections will be added at the Preservica root using security tag: {security_tag}")
 
     atom_server: str = cmd_line["atom_server"]
     if atom_server.startswith("https://"):
@@ -354,7 +411,6 @@ def init(args):
         atom_client = AccessToMemory(api_key=cmd_line["atom_api_key"],  server=atom_server)
     else:
         atom_client = AccessToMemory(username=cmd_line["atom_user"], password=cmd_line["atom_password"], server=atom_server)
-
 
     synchronise(entity, search, collection, atom_client, new_folder_location, security_tag)
 
