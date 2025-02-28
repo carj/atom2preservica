@@ -14,7 +14,7 @@ The atom2preservica module is designed to search Preservica for digital objects 
 When it finds them it:
 
 1) Sets the title and description of the asset based on the AtoM metadata. It also creates
-a Dublin Core XML document describing the item and adds that to Preservica asset.
+a Dublin Core XML metadata document from AtoM metadata describing the asset and adds that to Preservica asset.
 
 2) Creates the archival hierarchy in Preservica which matches the same levels of description in AtoM, e.g. the Fonds and series etc.
 It moves the Preservica asset into the correct level of the newly created hierarchy.
@@ -25,13 +25,13 @@ It moves the Preservica asset into the correct level of the newly created hierar
 ## Select Assets for Synchronisation
 
 atom2preservica searches a Preservica collection or the entire Preservica repository for assets which have been marked as ready
-for synchronisation. The mechanism used to determine that an asset is reasy for linking is that it should have an 
-external identifier containing the AtoM slug.
+for synchronisation. The mechanism used to determine that an asset is ready for linking is that it should have an 
+external identifier in Preservica containing the AtoM slug.
 The key for the identifier should be "AToM-Slug". The value should be the slug of the AtoM object.
 
 For example:
 
-![AToM-Slug](https://github.com/carj/atom2preservica/blob/main/docs/images/slug.png)
+![AToM-Slug](https://raw.githubusercontent.com/carj/atom2preservica/refs/heads/main/docs/images/slug.png)
 
 The atom2preservica tool will not add slugs to Preservica objects, this should be done either during ingest or after
 ingest manually or via the API.
@@ -40,10 +40,12 @@ ingest manually or via the API.
 ## Limitations
 
 The atom2preservica module does not support the creation of new assets in Preservica. It only updates existing assets.
-atom2preservica does not update AtoM, after the synchronisation process is complete. Preservica assets are linked to Atom,
+For an automated way to add Assets into Preservica see https://pypreservica.readthedocs.io/.
+
+atom2preservica does not update or change AtoM, after the synchronisation process is complete. Preservica assets are linked to Atom,
 but AtoM does not hold a link back to Preservica. The synchronisation is not yet bidirectional.
 
-If descriptive metadata is updated in AtoM, the module will not update the asset metadata in Preservica.
+If descriptive metadata is updated in AtoM after the synchronisation, the module will not update the asset metadata in Preservica.
 
 The AtoM Rest Plugin arRestApiPlugin needs to be activated for atom2preservica to work.
 

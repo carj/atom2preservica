@@ -1,5 +1,5 @@
 """
-AtoM2Preservica
+atom2preservica
 
 Synchronise metadata from AtoM to Preservica
 
@@ -9,10 +9,13 @@ licence:    Apache License 2.0
 """
 import argparse
 import os.path
-from datetime import datetime
 import xml.etree.ElementTree
+from datetime import datetime
+
 from pyAtoM import *
 from pyPreservica import *
+
+from atom2preservica.oai_db import OaiDB
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +23,8 @@ logging.basicConfig(level=logging.INFO)
 ATOM_SLUG = "AToM-Slug"
 ATOM_SYNC_DATE = "AToM-Sync-Date"
 ATOM_REFERENCE_CODE = "AToM-Reference-Code"
+
+OAI_DC_NS = "http://www.openarchives.org/OAI/2.0/oai_dc/"
 
 # keep a cache of folders to avoid multiple lookups to Preservica
 folder_cache = dict()
@@ -65,7 +70,9 @@ def create_folder(entity: EntityAPI, atom_item, parent_ref, security_tag: str):
     if 'reference_code' in atom_item:
         entity.add_identifier(folder, identifier_type=ATOM_REFERENCE_CODE, identifier_value=atom_item['reference_code'])
 
-    add_asset_metadata(entity, folder, atom_item)
+    xml_doc = create_metadata(atom_item)
+
+    entity.update_metadata(folder, OAI_DC_NS, xml_doc)
 
     if 'level_of_description' in atom_item:
         folder.custom_type = atom_item['level_of_description']
@@ -99,7 +106,10 @@ def create_parent_series(atom_client: AccessToMemory, entity: EntityAPI, slug: s
     parent_slug: Optional[str] = item.get('parent', None)
     if parent_slug is None:
         print(f"Creating Folder with slug: {parent_slug}")
-        return create_folder(entity, item, parent_collection.reference, security_tag)
+        if parent_collection is None:
+            return create_folder(entity, item, None, security_tag)
+        else:
+            return create_folder(entity, item, parent_collection.reference, security_tag)
 
     parent_item = atom_client.get(parent_slug)
     parent_item_slug = parent_item['slug']
@@ -189,13 +199,11 @@ def get_folder(entity: EntityAPI, atom_record, atom_client: AccessToMemory, secu
     return folder_cache[parent_slug]
 
 
-def add_asset_metadata(client: EntityAPI, entity: Entity, atom_record: dict):
+def create_metadata(atom_record: dict):
     """
     
-    Create a Dublin Core XML document from the ATOM Record and add it to the Preservica entity
+    Create a Dublin Core XML document from the ATOM Record
     
-    :param client: 
-    :param entity: 
     :param atom_record: 
     :return: 
     """""
@@ -269,7 +277,56 @@ def add_asset_metadata(client: EntityAPI, entity: Entity, atom_record: dict):
 
     xml_request = xml.etree.ElementTree.tostring(xip_object, encoding='utf-8')
 
-    client.add_metadata(entity, "http://www.openarchives.org/OAI/2.0/oai_dc/", xml_request.decode('utf-8'))
+    return xml_request.decode('utf-8')
+
+
+def update_asset(entity: EntityAPI, asset: Asset, atom_record: dict,  parent_folder: Folder):
+    """
+    Save the asset to Preservica
+
+    :param parent_folder:
+    :param atom_record:
+    :param asset:
+    :param entity:
+    :return:
+    """
+
+    dirty: bool = False
+    # Update the Asset with the new Title and Description from ATOM
+    if 'title' in atom_record:
+        if asset.title != atom_record['title']:
+            asset.title = atom_record['title']
+            dirty = True
+    if 'scope_and_content' in atom_record:
+        if asset.description != atom_record['scope_and_content']:
+            asset.description = atom_record['scope_and_content']
+            dirty = True
+    if 'level_of_description' in atom_record:
+        if asset.custom_type != atom_record['level_of_description']:
+            asset.custom_type = atom_record['level_of_description']
+            dirty = True
+
+    if dirty:
+        entity.save(asset)
+
+    if 'reference_code' in atom_record:
+        entity.update_identifiers(asset, ATOM_REFERENCE_CODE, atom_record['reference_code'])
+
+    if 'alternative_identifiers' in atom_record:
+        for identifier in atom_record['alternative_identifiers']:
+            if isinstance(identifier, dict):
+                for key, value in identifier.items():
+                    entity.update_identifiers(asset, key, value)
+
+    xml_doc = create_metadata(atom_record)
+
+    entity.update_metadata(asset, OAI_DC_NS, xml_doc)
+
+    # Move if required
+    if asset.parent != parent_folder.reference:
+        entity.move(asset, parent_folder)
+
+    entity.update_identifiers(asset, ATOM_SYNC_DATE, f'{datetime.now():%Y-%m-%d %H:%M:%S}')
 
 
 def save_asset(entity: EntityAPI, asset: Asset, atom_record: dict,  parent_folder: Folder):
@@ -293,7 +350,8 @@ def save_asset(entity: EntityAPI, asset: Asset, atom_record: dict,  parent_folde
         asset.custom_type = level_of_description
 
     entity.save(asset)
-    entity.add_identifier(asset, ATOM_SYNC_DATE, datetime.now().isoformat())
+
+    entity.add_identifier(asset, ATOM_SYNC_DATE, f'{datetime.now():%Y-%m-%d %H:%M:%S}')
 
     if 'reference_code' in atom_record:
         entity.add_identifier(asset, ATOM_REFERENCE_CODE, atom_record['reference_code'])
@@ -304,14 +362,20 @@ def save_asset(entity: EntityAPI, asset: Asset, atom_record: dict,  parent_folde
                 for key, value in identifier.items():
                     entity.add_identifier(asset, key, value)
 
-    add_asset_metadata(entity, asset, atom_record)
-    entity.move(asset, parent_folder)
+    xml_doc = create_metadata(atom_record)
 
-def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_client: AccessToMemory, parent_collection: Folder, security_tag: str):
+    entity.add_metadata(asset, OAI_DC_NS, xml_doc)
+
+    # Move if required
+    if asset.parent != parent_folder.reference:
+        entity.move(asset, parent_folder)
+
+def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_client: AccessToMemory, parent_collection: Folder, security_tag: str, oai: OaiDB):
     """
     Synchronise metadata from items in ATOM onto Preservica Assets
 
 
+    :param oai:
     :param security_tag:        The Preservica security tag to use for new collections
     :param parent_collection:   The Preservica collection where new ATOM levels of description will be added
     :param atom_client:         The Access to Memory client
@@ -334,6 +398,14 @@ def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_clie
     else:
         logger.info(f"Found {num_hits} objects to check")
 
+    check_updates: bool = False
+    # Can we check for updates
+    # we need the OAI-PMH API Key and a valid database
+    if oai is not None:
+        check_updates = oai.is_database_available()
+
+    if check_updates:
+        logger.info("Checking for updates using OAI-PMH")
 
     for hit in search.search_index_filter_list(query="%", filter_values=filter_values):
         reference: str = hit['xip.reference']
@@ -353,6 +425,18 @@ def synchronise(entity: EntityAPI, search: ContentAPI, folder: Folder, atom_clie
                     logger.info(f"Found AtoM slug: {atom_slug} for asset: {reference}")
                     # Update the Asset with ATOM metadata and move it to the correct collection
                     save_asset(entity, asset, atom_record, parent_folder)
+            elif (sync_date is not None) and (check_updates is True):
+                change_date = oai.change_date(atom_slug)
+                sync_dt = datetime.fromisoformat(sync_date).replace(tzinfo=None)
+                change_dt = datetime.fromisoformat(change_date).replace(tzinfo=None)
+                if change_dt > sync_dt:
+                    atom_record = atom_client.get(slug=atom_slug)
+                    parent_folder: Folder = get_folder(entity, atom_record, atom_client, security_tag,
+                                                       parent_collection)
+                    logger.info(f"Updating Asset: {asset.title} as ATOM has been updated")
+                    update_asset(entity, asset, atom_record, parent_folder)
+                else:
+                    logger.info(f"Asset: {asset.title} already synchronised on {sync_date}")
             else:
                 logger.info(f"Asset: {asset.title} already synchronised on {sync_date}")
 
@@ -365,6 +449,33 @@ def init(args):
     :return:
     """
     cmd_line = vars(args)
+
+    atom_server: str = cmd_line["atom_server"]
+    if atom_server.startswith("https://"):
+        atom_server = atom_server.replace("https://", "")
+
+    if 'create_oai_db' in cmd_line:
+        create_db: bool = bool(cmd_line['create_oai_db'])
+        if create_db:
+            if 'oai_api_key' in cmd_line:
+                oai_key: str = cmd_line['oai_api_key']
+                if oai_key is not None:
+                    oai: OaiDB = OaiDB(cmd_line["atom_server"], oai_key)
+                    logger.info("Creating OAI Database.....")
+                    oai.create_database()
+                    logger.info("OAI Database created")
+                    sys.exit(0)
+                else:
+                    logger.error("You must provide an OAI API Key to Create the database")
+                    sys.exit(1)
+
+    oai: Optional[OaiDB] = None
+    # Can we check for updates
+    # we need the OAI-PMH API Key and a valid database
+    if 'oai_api_key' in cmd_line:
+        oai_key: str = cmd_line['oai_api_key']
+        if oai_key is not None:
+            oai: OaiDB = OaiDB(cmd_line["atom_server"], oai_key)
 
     username = cmd_line['preservica_username']
     password = cmd_line['preservica_password']
@@ -395,24 +506,30 @@ def init(args):
     new_folder_location = Optional[Folder]
     if new_collections is not None:
         new_folder_location: Folder = entity.folder(new_collections)
-        logger.info(f"New Collections will be added below: {new_folder_location.title}")
+        logger.info(f"New Collections will be added below: {new_folder_location.title} using security tag: {security_tag}")
     else:
         logger.info(f"New Collections will be added at the Preservica root using security tag: {security_tag}")
-
-    atom_server: str = cmd_line["atom_server"]
-    if atom_server.startswith("https://"):
-        atom_server = atom_server.replace("https://", "")
 
     if (cmd_line["atom_api_key"] is None) and ((cmd_line["atom_user"] is None) or (cmd_line["atom_password"] is None)):
         logger.error("You must provide either an AtoM API Key or a username and password")
         sys.exit(1)
 
     if cmd_line["atom_api_key"] is not None:
-        atom_client = AccessToMemory(api_key=cmd_line["atom_api_key"],  server=atom_server)
+        try:
+            atom_client = AccessToMemory(api_key=cmd_line["atom_api_key"],  server=atom_server)
+        except RuntimeError as e:
+            logger.error(f"Error connecting to AtoM: {e}")
+            logger.error(f"Check the AtoM server URL and API Key are correct")
+            sys.exit(1)
     else:
-        atom_client = AccessToMemory(username=cmd_line["atom_user"], password=cmd_line["atom_password"], server=atom_server)
+        try:
+            atom_client = AccessToMemory(username=cmd_line["atom_user"], password=cmd_line["atom_password"], server=atom_server)
+        except RuntimeError as e:
+            logger.error(f"Error connecting to AtoM: {e}")
+            logger.error(f"Check the AtoM server URL and username/password are correct")
+            sys.exit(1)
 
-    synchronise(entity, search, collection, atom_client, new_folder_location, security_tag)
+    synchronise(entity, search, collection, atom_client, new_folder_location, security_tag, oai)
 
 def main():
     """
@@ -453,6 +570,14 @@ def main():
                             help="Your Preservica password if not using credentials.properties", required=False)
     cmd_parser.add_argument("-s", "--preservica-server", type=str,
                             help="Your Preservica server domain name if not using credentials.properties",
+                            required=False)
+
+    cmd_parser.add_argument("-cdb", "--create-oai-db", default=False,
+                            action='store_true',
+                            help="Create a database of oai identifiers which map to slugs",
+                            required=False)
+    cmd_parser.add_argument("-ok", "--oai-api-key", type=str,
+                            help="The OAI API Key",
                             required=False)
 
     args = cmd_parser.parse_args()

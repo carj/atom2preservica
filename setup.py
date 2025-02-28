@@ -21,7 +21,7 @@ if sys.argv[-1] == 'publish':
 # This call to setup() does all the work
 setup(
     name=PKG,
-    version="0.0.6",
+    version="0.0.8",
     description="Python library for the Preservica API",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -42,7 +42,7 @@ setup(
         "Topic :: System :: Archiving",
     ],
     keywords='Preservica API Preservation, AccessToMemory, AtoM',
-    install_requires=["pyPreservica", "pyAtoM"],
+    install_requires=["pyPreservica", "pyAtoM",  "tinydb", "Sickle"],
     project_urls={
         'Documentation': 'https://github.com/carj/atom2preservica',
         'Source': 'https://github.com/carj/atom2preservica',
