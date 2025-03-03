@@ -73,6 +73,27 @@ To install atom2preservica, simply run this simple command in your terminal of c
 
 ## Usage
 
+atom2preservica can be configured via command line arguments or by using a properties file.
+
+To use a properties file, create a file called credentials.properties in the same directory as the script with the following properties:
+
+    [credentials]
+    username=user@example.com
+    password=123456
+    server=eu.preservica.com
+    atom-api-key=123456788
+    atom-server=https://demo.accesstomemory.org
+    security-tag=open
+    search-collection=913a6bfd-874e-4cb0-8940-e1b0d2a583a7
+    new-collections=0c733043-4816-4d74-9492-906badc1bce0
+
+   
+You can then run the script without any arguments as:
+
+    $ python -m atom2preservica
+
+Alternatively, you can use command line arguments to configure the script. The following arguments are available:
+
     usage: atom2preservica [-h] -a ATOM_SERVER [-k ATOM_API_KEY] [-au ATOM_USER]
                        [-ap ATOM_PASSWORD] [-st SECURITY_TAG] [-c COLLECTION]
                        [-cr NEW_COLLECTIONS_ROOT]  [-u PRESERVICA_USERNAME]
@@ -91,7 +112,7 @@ To install atom2preservica, simply run this simple command in your terminal of c
             -st [--security-tag]            The security tag for any new collections added to Preservica
             -c [--search-collection]        The Preservica collection to search for assets, ignore to search the entire repository
 
-            -cr [--new-collections-root]    Add location where new AtoM Fonds/series should be created in Preservica. 
+            -cr [--new-collections]         Add location where new AtoM Fonds/series should be created in Preservica. 
                                             If not set, new collections will be created at the root of the repository
 
             -u [--preservica-username]      Your Preservica username if not using credentials.properties

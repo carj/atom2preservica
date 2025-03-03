@@ -450,9 +450,57 @@ def init(args):
     """
     cmd_line = vars(args)
 
-    atom_server: str = cmd_line["atom_server"]
-    if atom_server.startswith("https://"):
-        atom_server = atom_server.replace("https://", "")
+    atom_server: Optional[str] = None
+    security_tag: Optional[str] = None
+    atom_api_key: Optional[str] = None
+    search_collection: Optional[str] = None
+    new_collections: Optional[str] = None
+
+    # Use the properties file if it exists
+    if os.path.exists('credentials.properties') and os.path.isfile('credentials.properties'):
+        config = configparser.ConfigParser(interpolation=configparser.Interpolation())
+        config.read(os.path.relpath('credentials.properties'), encoding='utf-8')
+        atom_server: str = config.get(section='credentials', option='atom-server', fallback=None)
+        if atom_server is None:
+            atom_server: str = cmd_line["atom_server"]
+        security_tag : str = config.get(section='credentials', option='security-tag', fallback=None)
+        if security_tag is None:
+            security_tag: str = cmd_line['security_tag']
+        atom_api_key : str = config.get(section='credentials', option='atom-api-key', fallback=None)
+        if atom_api_key is None:
+            atom_api_key = cmd_line["atom_api_key"]
+        search_collection  = config.get(section='credentials', option='search-collection', fallback=None)
+        if search_collection is None:
+            search_collection = cmd_line['search_collection']
+        new_collections =config.get(section='credentials', option='new-collections', fallback=None)
+        if new_collections is None:
+            new_collections = cmd_line['new_collections']
+
+    # Use the command line arguments
+    if atom_server is None:
+        atom_server: str = cmd_line["atom_server"]
+        if atom_server is None:
+            logger.error("You must provide an AtoM server URL")
+            sys.exit(1)
+
+    # security tag for new collections
+    if security_tag is None:
+        security_tag: str = cmd_line['security_tag']
+
+    if new_collections is None:
+        new_collections = cmd_line['new_collections']
+
+    if search_collection is None:
+        search_collection = cmd_line['search_collection']
+
+    if atom_api_key is None:
+        atom_api_key = cmd_line["atom_api_key"]
+        if atom_api_key is None:
+            logger.error("You must provide an AtoM API Key")
+            sys.exit(1)
+
+
+
 
     if 'create_oai_db' in cmd_line:
         create_db: bool = bool(cmd_line['create_oai_db'])
@@ -493,43 +541,38 @@ def init(args):
             logger.error(f"Cannot find credentials.properties file")
             sys.exit(1)
 
-    security_tag: str = cmd_line['security_tag']
 
-    collection = cmd_line['search_collection']
-    if collection is not None:
-        folder: Folder = entity.folder(collection)
-        logger.info(f"Synchronise metadata for objects in collection: {folder.title}")
+    search_folder: Optional[Folder] = None
+    if search_collection is not None:
+        search_folder: Folder = entity.folder(search_collection)
+        logger.info(f"Synchronise metadata for objects in collection: {search_folder.title}")
     else:
         logger.info(f"Synchronise metadata for objects from all collections")
 
-    new_collections = cmd_line["new_collections_root"]
     new_folder_location = Optional[Folder]
     if new_collections is not None:
         new_folder_location: Folder = entity.folder(new_collections)
-        logger.info(f"New Collections will be added below: {new_folder_location.title} using security tag: {security_tag}")
+        logger.info(
+            f"New Collections will be added below: {new_folder_location.title} using security tag: {security_tag}")
     else:
         logger.info(f"New Collections will be added at the Preservica root using security tag: {security_tag}")
 
-    if (cmd_line["atom_api_key"] is None) and ((cmd_line["atom_user"] is None) or (cmd_line["atom_password"] is None)):
-        logger.error("You must provide either an AtoM API Key or a username and password")
-        sys.exit(1)
+    atom_server_base = atom_server
+    if atom_server.startswith("https://"):
+        atom_server_base = atom_server.replace("https://", "")
 
-    if cmd_line["atom_api_key"] is not None:
+    atom_client = None
+    if atom_api_key is not None:
         try:
-            atom_client = AccessToMemory(api_key=cmd_line["atom_api_key"],  server=atom_server)
+            atom_client = AccessToMemory(api_key=atom_api_key,  server=atom_server_base)
         except RuntimeError as e:
             logger.error(f"Error connecting to AtoM: {e}")
             logger.error(f"Check the AtoM server URL and API Key are correct")
             sys.exit(1)
-    else:
-        try:
-            atom_client = AccessToMemory(username=cmd_line["atom_user"], password=cmd_line["atom_password"], server=atom_server)
-        except RuntimeError as e:
-            logger.error(f"Error connecting to AtoM: {e}")
-            logger.error(f"Check the AtoM server URL and username/password are correct")
-            sys.exit(1)
 
-    synchronise(entity, search, collection, atom_client, new_folder_location, security_tag, oai)
+    if atom_client is not None:
+        synchronise(entity, search, search_folder, atom_client, new_folder_location, security_tag, oai)
+
 
 def main():
     """
@@ -545,12 +588,9 @@ def main():
         description='Synchronise metadata and levels of description from a Access To Memory (AtoM) instance to Preservica',
         epilog='')
 
-    cmd_parser.add_argument("-a", "--atom-server", type=str, help="The AtoM server URL", required=True)
+    cmd_parser.add_argument("-a", "--atom-server", type=str, help="The AtoM server URL", required=False)
 
-    cmd_parser.add_argument("-k", "--atom-api-key", type=str, help="The AtoM API Key, if not using username and password", required=False)
-
-    cmd_parser.add_argument("-au", "--atom-user", type=str, help="The AtoM username, if not using the API Key", required=False)
-    cmd_parser.add_argument("-ap", "--atom-password", type=str, help="The AtoM password, if not using the API Key", required=False)
+    cmd_parser.add_argument("-k", "--atom-api-key", type=str, help="The AtoM user API Key", required=False)
 
     cmd_parser.add_argument("-st", "--security-tag", type=str, default="open",
                             help="The Preservica security tag to use for new collections, defaults to open",
@@ -560,7 +600,7 @@ def main():
                             help="The Preservica parent collection uuid to search for linked assets, ignore to Synchronise the entire repository",
                             required=False)
 
-    cmd_parser.add_argument("-cr", "--new-collections-root", type=str,
+    cmd_parser.add_argument("-cr", "--new-collections", type=str,
                             help="The parent Preservica collection to add new AtoM levels of description, ignore to add new collections at the root",
                             required=False)
 
