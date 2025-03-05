@@ -476,31 +476,33 @@ def init(args):
         if new_collections is None:
             new_collections = cmd_line['new_collections']
 
-    # Use the command line arguments
-    if atom_server is None:
+    # Use the command line arguments to overwrite the properties file
+
+    if cmd_line["atom_server"] is not None:
         atom_server: str = cmd_line["atom_server"]
-        if atom_server is None:
-            logger.error("You must provide an AtoM server URL")
-            sys.exit(1)
+    if atom_server is None:
+        logger.error("You must provide an AtoM server URL")
+        sys.exit(1)
 
     # security tag for new collections
+    # dont override the default security tag from the command line as it
+    # provides a default
     if security_tag is None:
         security_tag: str = cmd_line['security_tag']
 
-    if new_collections is None:
+    # override the new collections from the command line
+    if cmd_line['new_collections'] is not None:
         new_collections = cmd_line['new_collections']
 
-    if search_collection is None:
+    # override the search collection from the command line
+    if cmd_line['search_collection'] is not None:
         search_collection = cmd_line['search_collection']
 
-    if atom_api_key is None:
+    if cmd_line["atom_api_key"] is not None:
         atom_api_key = cmd_line["atom_api_key"]
         if atom_api_key is None:
             logger.error("You must provide an AtoM API Key")
             sys.exit(1)
-
-
-
 
     if 'create_oai_db' in cmd_line:
         create_db: bool = bool(cmd_line['create_oai_db'])
@@ -508,7 +510,7 @@ def init(args):
             if 'oai_api_key' in cmd_line:
                 oai_key: str = cmd_line['oai_api_key']
                 if oai_key is not None:
-                    oai: OaiDB = OaiDB(cmd_line["atom_server"], oai_key)
+                    oai: OaiDB = OaiDB(atom_server, oai_key)
                     logger.info("Creating OAI Database.....")
                     oai.create_database()
                     logger.info("OAI Database created")
@@ -523,7 +525,7 @@ def init(args):
     if 'oai_api_key' in cmd_line:
         oai_key: str = cmd_line['oai_api_key']
         if oai_key is not None:
-            oai: OaiDB = OaiDB(cmd_line["atom_server"], oai_key)
+            oai: OaiDB = OaiDB(atom_server, oai_key)
 
     username = cmd_line['preservica_username']
     password = cmd_line['preservica_password']
@@ -549,13 +551,18 @@ def init(args):
     else:
         logger.info(f"Synchronise metadata for objects from all collections")
 
-    new_folder_location = Optional[Folder]
+    available_tags = entity.user_security_tags().keys()
+    if security_tag not in available_tags:
+        logger.error(f"Security Tag: {security_tag} is not available for this user")
+        sys.exit(1)
+
+    new_folder_location : Optional[Folder] = None
     if new_collections is not None:
         new_folder_location: Folder = entity.folder(new_collections)
         logger.info(
-            f"New Collections will be added below: {new_folder_location.title} using security tag: {security_tag}")
+            f"Atom hierarchy will be added below: [{new_folder_location.title}] using security tag: [{security_tag}]")
     else:
-        logger.info(f"New Collections will be added at the Preservica root using security tag: {security_tag}")
+        logger.info(f"Atom hierarchy will be added at the Preservica root using security tag: [{security_tag}]")
 
     atom_server_base = atom_server
     if atom_server.startswith("https://"):

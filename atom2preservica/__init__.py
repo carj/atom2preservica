@@ -14,6 +14,6 @@ licence:    Apache License 2.0
 __author__ = "James Carr (drjamescarr@gmail.com)"
 
 # Version of the  package
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __license__ = "Apache License Version 2.0"

@@ -1,23 +1,25 @@
 # atom2preservica
-Python Module To Synchronize Metadata from the Access To Memory (AtoM) to Preservica.
+Python Module To Synchronize Metadata from the Access To Memory (AtoM) platform to Preservica.
 
 AtoM it is a web-based, open source application for standards-based archival 
 description and access in a multilingual, multi-repository environment.
 https://accesstomemory.org/en/
 
-Preservica is a widely used web based digital preservation platform which stores and protects digital objects.
+Preservica is a widely used web based active digital preservation platform which stores and protects digital objects.
 https://preservica.com/
 
 ## How does atom2preservica work?
 
-The atom2preservica module is designed to search Preservica for digital objects which exist in AtoM.
+The atom2preservica module is designed to search Preservica for digital objects which have archival descriptions in AtoM.
 When it finds them it:
 
-1) Sets the title and description of the asset based on the AtoM metadata. It also creates
+1) Sets the title and description of the asset in Preservica based on the AtoM metadata. It also creates
 a Dublin Core XML metadata document from AtoM metadata describing the asset and adds that to Preservica asset.
+It also sets the level of description on the Preservica metadata along with any AtoM identifiers.
 
-2) Creates the archival hierarchy in Preservica which matches the same levels of description in AtoM, e.g. the Fonds and series etc.
-It moves the Preservica asset into the correct level of the newly created hierarchy.
+2) Creates the full archival hierarchy (levels of description) in Preservica which matches the same levels of description in AtoM, 
+e.g. the Fonds and series etc.
+It moves the Preservica asset into the correct level of the newly created Preservica hierarchy.
 
 3) Marks the Preservica assets as synchronised, so that they are ignored the next time the module is run again.
 
@@ -75,7 +77,7 @@ To install atom2preservica, simply run this simple command in your terminal of c
 
 atom2preservica can be configured via command line arguments or by using a properties file.
 
-To use a properties file, create a file called credentials.properties in the same directory as the script with the following properties:
+To use a properties file, create a file called `credentials.properties` in the current working directory with the following properties:
 
     [credentials]
     username=user@example.com
@@ -87,10 +89,26 @@ To use a properties file, create a file called credentials.properties in the sam
     search-collection=913a6bfd-874e-4cb0-8940-e1b0d2a583a7
     new-collections=0c733043-4816-4d74-9492-906badc1bce0
 
+The property descriptions are:
+
+    username - Your Preservica username
+    password - Your Preservica password
+    server -   Your Preservica server domain name without the https:// part
+
+    atom-api-key - The API key for the AtoM user,  https://accesstomemory.org/en/docs/2.8/dev-manual/api/api-intro/#api-intro-auth-key
+    atom-server -  The URL of the AtoM server
+    
+    security-tag - The security tag for any new collections added to Preservica
+    search-collection - The Preservica collection to search for assets, ignore to search the entire repository
+    new-collections - The location where new AtoM Fonds/Series/Sub-series should be created in Preservica. If not set, new collections will be created at the root of the repository
    
 You can then run the script without any arguments as:
 
     $ python -m atom2preservica
+
+You can download a sample `properties.credentials` file from the github repository.
+https://raw.githubusercontent.com/carj/atom2preservica/refs/heads/main/credentials.properties.template
+
 
 Alternatively, you can use command line arguments to configure the script. The following arguments are available:
 
